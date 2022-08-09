@@ -362,6 +362,7 @@ jobs:
             ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i inventory.txt deploy-backend.yml
       - destroy-environment 
       - revert-migrations
+
   smoke-test:
     docker:
       - image: python:3.7-alpine3.11
@@ -404,6 +405,31 @@ jobs:
 
         - destroy-environment 
         - revert-migrations
+        
+  cloudfront-update:
+    docker:
+      - image: amazon/aws-cli
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: |
+            # your code here
+      - run:
+          name: Update cloudfront distribution
+          command: |
+            aws cloudformation deploy \
+              --template-file .circleci/files/cloudfront.yml \
+              --stack-name InitialStack \
+              --parameter-overrides WorkflowID="${CIRCLE_WORKFLOW_ID:0:7}" \
+              --tags project=udapeople
+      - run:
+          name: Wait for the stack to complete
+          command : sleep 300 
+      # Here's where you will add some code to rollback on failure  
+      
+      - destroy-environment 
+      - revert-migrations
 
   cleanup:
     docker:
