@@ -245,6 +245,92 @@ jobs:
           key: backend-build
       #- destroy-environment 
 
+  deploy-frontend:
+    docker:
+    # docker image that supoorts AWS CLI
+      - image: python:3.7-alpine3.11
+    steps: 
+      - checkout
+      - run: 
+          name: install dependencies 
+          command: |
+            
+            apk add --no-cache curl
+            apk add --no-cache --upgrade bash
+            apk add --no-cache --update npm
+            pip3 install awscli
+            
+      - run:
+          name: Get backend url
+          command: |
+            export BACKEND_IP=$(aws ec2 describe-instances \
+              --query "Reservations[*].Instances[*].PublicIpAddress[]" \
+              --filters "Name=tag:project,Values=udapeople" \
+              --output text)
+            export API_URL="http://${BACKEND_IP}:3030"
+            echo "API_URL = ${API_URL}"
+            echo API_URL="http://${BACKEND_IP}:3030" >> frontend/.env
+            cat frontend/.env
+      - run: 
+          name: Copy built frontend files to the S3 bucket
+          command: |
+            cd frontend
+            npm install
+            npm run build
+            tar -czvf artifact-"${CIRCLE_WORKFLOW_ID:0:7}".tar.gz dist
+            aws s3 cp dist s3://udapeople-${CIRCLE_WORKFLOW_ID:0:7} --recursive
+      #- destroy-environment 
+
+  deploy-backend:
+    docker:
+      - image: python:3.7-alpine3.11
+    steps:
+      - checkout
+      - add_ssh_keys:
+          fingerprints: ["81:4b:81:4a:95:53:62:ba:c7:eb:f8:c6:62:97:94:a1"]
+
+      - attach_workspace:
+          # Must be absolute path or relative path from working_directory
+          at: ~/
+      - run:
+          name: Install dependencies
+          command: |
+            apk add tar gzip 
+            apk add --no-cache curl
+            apk add --no-cache --upgrade bash
+            apk add --no-cache --update ansible
+            apk add --no-cache openssh-client
+            pip3 install awscli
+            apk add --no-cache --update npm
+           
+      - run: 
+          name: Deploy backend
+          command: |
+            cd backend
+            npm i
+            npm run build
+            echo "NODE_ENV=production" >.env
+            echo "VERSION=1" >>.env
+            echo "TYPEORM_CONNECTION=postgres" >>.env
+            echo "TYPEORM_MIGRATIONS_DIR=./src/migrations" >>.env
+            echo "TYPEORM_ENTITIES=./src/modules/domain/**/*.entity.ts" >>.env
+            echo "TYPEORM_MIGRATIONS=./src/migrations/*.ts" >>.env
+
+            echo "# Things you can change if you wish..." >>.env
+            echo "TYPEORM_HOST=postgres.cazdb8tjarlp.us-east-1.rds.amazonaws.com" >>.env
+            echo "TYPEORM_PORT=5432" >>.env
+            echo "TYPEORM_USERNAME=postgres" >>.env
+            echo "TYPEORM_PASSWORD=mypassword" >>.env
+            echo "TYPEORM_DATABASE=postgres" >>.env       
+            cd ..
+            # Zip the directory
+            tar -C backend -czvf artifact.tar.gz .
+            cd .circleci/ansible
+            cat inventory.txt
+            ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -i inventory.txt deploy-backend.yml
+      #- destroy-environment 
+      #- revert-migrations
+
 workflows:
   default:
     jobs:
@@ -267,3 +353,7 @@ workflows:
           requires: [deploy-infrastructure]        
       - run-migrations:
           requires: [configure-infrastructure]
+      - deploy-frontend:
+          requires: [run-migrations]
+      - deploy-backend:
+          requires: [run-migrations]
