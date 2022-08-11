@@ -57,5 +57,6 @@ Outputs:
   DemoInstanceId:
     Description: Instance IP 
     Value: !Ref DemoElasticIP 
+    
 
  
